@@ -6,6 +6,7 @@ repositories {
   mavenCentral()
 }
 
+
 dependencies{
   implementation "junit:junit:4.12"
   implementation 'org.json:json:20171018' // org.json
@@ -32,6 +33,11 @@ task Client(type: JavaExec) {
   classpath = sourceSets.main.runtimeClasspath
 
   main = 'SockClient'
-  args "localhost"
-  args 8888
+
+  if (project.hasProperty('appArgs')) {
+    args project.appArgs.split()
+  } else {
+    args "localhost"
+    args "8888"
+  }
 }

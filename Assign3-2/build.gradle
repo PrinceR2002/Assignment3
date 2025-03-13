@@ -2,7 +2,7 @@
 apply plugin: 'application'
 
 //define main class
-mainClassName = 'Concentration'
+mainClassName = 'Assign32starter.SockServer'
 
 repositories {
     mavenCentral()
@@ -13,21 +13,41 @@ dependencies {
 }
 
 task runClient(type: JavaExec) {
-  group 'gui'
-  description 'Displays a GUI for a game of concentration'
+  group 'TCP Server/Client'
+  description 'Runs the Client GUI'
 
-  classpath = sourceSets.main.runtimeClasspath
-
-  main = 'Assign32starter.ClientGui'
   standardInput = System.in
-  args "1"
+  classpath = sourceSets.main.runtimeClasspath
+  main = 'Assign32starter.ClientGui'
+
+  if (project.hasProperty('port') && project.hasProperty('host')) {
+    args project.host
+    args project.port
+  } else {
+    args "localhost"
+    args "9000"
+  }
 }
 
 task runServer(type: JavaExec) {
-  group 'gui'
-  description 'Displays a GUI for a game of concentration'
+  group 'TCP Server/Client'
+  description 'Runs the Server'
 
   classpath = sourceSets.main.runtimeClasspath
-
   main = 'Assign32starter.SockServer'
+
+  if (project.hasProperty('port')) {
+    args project.port
+  } else {
+    args "9000" // Default Port
+  }
+}
+
+task runTests(type: JavaExec) {
+  group 'Testing'
+  description 'Runs unit tests'
+
+  classpath = sourceSets.test.runtimeClasspath
+  main = 'org.junit.runner.JUnitCore'
+  args 'ServerTest'
 }
