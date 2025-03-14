@@ -19,64 +19,185 @@ import org.json.*;
  */
 public class SockServer {
 	static Stack<String> imageSource = new Stack<String>();
+	private static HashMap<String, Integer> leaderboard = new HashMap<>();
+	private static MovieDatabase movieDatabase = new MovieDatabase();
+	private static HashMap<String, GameSession> activeGames = new HashMap<>();
 
-	public static void main (String args[]) {
-		Socket sock;
-		try {
-			
-			//opening the socket here, just hard coded since this is just a bas example
-			ServerSocket serv = new ServerSocket(8888); // TODO, should not be hardcoded
-			System.out.println("Server ready for connetion");
+	public static void main(String args[]) {
+		int port = 9000; // Default port
+		if (args.length > 0) {
+			port = Integer.parseInt(args[0]);
+		}
 
-			// placeholder for the person who wants to play a game
-			String name = "";
-			int points = 0;
+		try (ServerSocket serverSocket = new ServerSocket(port)) {
+			System.out.println("Server running on port " + port);
 
-			// read in one object, the message. we know a string was written only by knowing what the client sent. 
-			// must cast the object from Object to desired type to be useful
-			while(true) {
-				sock = serv.accept(); // blocking wait
+			while (true) {
+				Socket clientSocket = serverSocket.accept();
+				System.out.println("Client connected.");
 
-				// could totally use other input outpur streams here
-				ObjectInputStream in = new ObjectInputStream(sock.getInputStream());
-				OutputStream out = sock.getOutputStream();
-
-				String s = (String) in.readObject();
-				JSONObject json = new JSONObject(s); // the requests that is received
-
-				JSONObject response = new JSONObject();
-
-				if (json.getString("type").equals("start")){
-					
-					System.out.println("- Got a start");
-				
-					response.put("type","hello" );
-					response.put("value","Hello, please tell me your name." );
-					sendImg("img/hi.png", response); // calling a method that will manipulate the image and will make it send ready
-					
-				}
-				else {
-					System.out.println("not sure what you meant");
-					response.put("type","error" );
-					response.put("message","unknown response" );
-				}
-				PrintWriter outWrite = new PrintWriter(sock.getOutputStream(), true); // using a PrintWriter here, you could also use and ObjectOutputStream or anything you fancy
-				outWrite.println(response.toString());
+				new Thread(() -> handleClient(clientSocket)).start();
 			}
-			
-		} catch(Exception e) {e.printStackTrace();}
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
 	}
 
-	/* TODO this is for you to implement, I just put a place holder here */
-	public static JSONObject sendImg(String filename, JSONObject obj) throws Exception {
-		File file = new File(filename);
+	private static void handleClient(Socket clientSocket) {
+		try (
+				ObjectInputStream in = new ObjectInputStream(clientSocket.getInputStream());
+				ObjectOutputStream out = new ObjectOutputStream(clientSocket.getOutputStream())
+		) {
+			String playerName = null;
 
-		if (file.exists()) {
-			// import image
-			// I did not use the Advanced Custom protocol
-			// I read in the image and translated it into basically into a string and send it back to the client where I then decoded again
-			obj.put("image", "Pretend I am this image: " + filename);
-		} 
-		return obj;
+			while (true) {
+				String requestStr = (String) in.readObject();
+				JSONObject request = new JSONObject(requestStr);
+				JSONObject response = new JSONObject();
+
+				String type = request.getString("type");
+
+				switch (type) {
+					case "hello":
+						response.put("type", "request_name");
+						response.put("message", "Enter your name:");
+						break;
+
+					case "set_name":
+						playerName = request.getString("name");
+						activeGames.put(playerName, new GameSession(playerName));
+						response.put("type", "request_age");
+						response.put("message", "Hello " + playerName + "! Enter your age:");
+						break;
+
+					case "set_age":
+						response.put("type", "menu");
+						response.put("options", new JSONArray().put("leaderboard").put("play").put("quit"));
+						response.put("message", "Choose an option:");
+						break;
+
+					case "leaderboard":
+						response.put("type", "leaderboard");
+						response.put("data", getLeaderboard());
+						break;
+
+					case "play":
+						response = activeGames.get(playerName).startGame();
+						break;
+
+					case "guess":
+						response = activeGames.get(playerName).processGuess(request.getString("guess"));
+						break;
+
+					case "skip":
+						response = activeGames.get(playerName).skipRound();
+						break;
+
+					case "next_hint":
+						response = activeGames.get(playerName).getNextHint();
+						break;
+
+					case "quit":
+						response.put("type", "quit");
+						response.put("message", "Goodbye " + playerName + "!");
+						break;
+
+					default:
+						response.put("type", "error");
+						response.put("message", "Invalid request.");
+				}
+
+				out.writeObject(response.toString());
+				out.flush();
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+	private static JSONObject getLeaderboard() {
+		JSONObject leaderboardJSON = new JSONObject();
+		for (String player : leaderboard.keySet()) {
+			leaderboardJSON.put(player, leaderboard.get(player));
+		}
+		return leaderboardJSON;
+	}
+}
+
+class GameSession {
+	private String playerName;
+	private String currentMovie;
+	private int currentHintIndex;
+	private int score;
+	private MovieDatabase movieDatabase = new MovieDatabase();
+
+	public GameSession(String playerName) {
+		this.playerName = playerName;
+		this.score = 0;
+	}
+
+	public JSONObject startGame() {
+		JSONObject response = new JSONObject();
+		currentMovie = movieDatabase.getRandomMovie();
+		currentHintIndex = 0;
+
+		response.put("type", "game_start");
+		response.put("hint", movieDatabase.getHint(currentMovie, currentHintIndex));
+		response.put("message", "Guess the movie based on the hint!");
+		return response;
+	}
+
+	public JSONObject processGuess(String guess) {
+		JSONObject response = new JSONObject();
+
+		if (guess.equalsIgnoreCase(currentMovie)) {
+			score += 10;
+			response.put("type", "correct_guess");
+			response.put("message", "Correct! You earned 10 points.");
+			response.put("score", score);
+		} else {
+			response.put("type", "wrong_guess");
+			response.put("message", "Wrong! Try again.");
+		}
+		return response;
+	}
+
+	public JSONObject skipRound() {
+		return startGame();
+	}
+
+	public JSONObject getNextHint() {
+		JSONObject response = new JSONObject();
+		if (currentHintIndex < 3) {
+			currentHintIndex++;
+			response.put("type", "next_hint");
+			response.put("hint", movieDatabase.getHint(currentMovie, currentHintIndex));
+		} else {
+			response.put("type", "no_more_hints");
+			response.put("message", "No more hints available!");
+		}
+		return response;
+	}
+}
+
+/**
+ * Stores movie names and hints.
+ */
+class MovieDatabase {
+	private HashMap<String, String[]> movies = new HashMap<>();
+
+	public MovieDatabase() {
+		movies.put("Titanic", new String[]{"A ship", "An iceberg", "A love story", "1997"});
+		movies.put("Inception", new String[]{"Dreams", "Spinning top", "Christopher Nolan", "2010"});
+		movies.put("Avatar", new String[]{"Blue aliens", "Pandora", "James Cameron", "2009"});
+		movies.put("The Godfather", new String[]{"Mafia", "Don Corleone", "Family", "1972"});
+	}
+
+	public String getRandomMovie() {
+		Object[] keys = movies.keySet().toArray();
+		return (String) keys[new Random().nextInt(keys.length)];
+	}
+
+	public String getHint(String movie, int index) {
+		return movies.get(movie)[index];
 	}
 }
