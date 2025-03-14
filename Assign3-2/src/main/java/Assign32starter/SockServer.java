@@ -11,7 +11,7 @@ import org.json.*;
 public class SockServer {
 	private static final HashMap<String, Integer> leaderboard = new HashMap<>();
 	private static final HashMap<String, GameSession> activeGames = new HashMap<>();
-	private static final int DEFAULT_PORT = 8880;
+	private static final int DEFAULT_PORT = 9000;
 
 	public static void main(String[] args) {
 		int port = DEFAULT_PORT; // Default port
