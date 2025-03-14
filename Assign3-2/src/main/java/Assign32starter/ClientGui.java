@@ -49,7 +49,7 @@ public class ClientGui implements Assign32starter.OutputPanel.EventHandlers {
 
 	// TODO: SHOULD NOT BE HARDCODED change to spec
 	String host = "localhost";
-	int port = 9000;
+	int port = 8880;
 
 	/**
 	 * Construct dialog

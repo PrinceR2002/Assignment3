@@ -1,46 +1,36 @@
 package Assign32starter;
+
 import java.net.*;
-import java.util.Base64;
-import java.util.Set;
-import java.util.Stack;
-import java.util.*;
-
-import javax.imageio.ImageIO;
-import javax.swing.ImageIcon;
-
-import java.awt.image.BufferedImage;
 import java.io.*;
+import java.util.*;
 import org.json.*;
-
 
 /**
  * A class to demonstrate a simple client-server connection using sockets.
- * Ser321 Foundations of Distributed Software Systems
  */
 public class SockServer {
-	static Stack<String> imageSource = new Stack<String>();
-	private static HashMap<String, Integer> leaderboard = new HashMap<>();
-	private static MovieDatabase movieDatabase = new MovieDatabase();
-	private static HashMap<String, GameSession> activeGames = new HashMap<>();
+	private static final HashMap<String, Integer> leaderboard = new HashMap<>();
+	private static final HashMap<String, GameSession> activeGames = new HashMap<>();
+	private static final int DEFAULT_PORT = 8880;
 
-	public static void main(String args[]) {
-		int port = 9000; // Default port
+	public static void main(String[] args) {
+		int port = DEFAULT_PORT; // Default port
 		if (args.length > 0) {
 			port = Integer.parseInt(args[0]);
 		}
 
-		try (ServerSocket serverSocket = new ServerSocket()) {
+		try (ServerSocket serverSocket = new ServerSocket(port)) {
 			serverSocket.setReuseAddress(true);
-			serverSocket.bind(new InetSocketAddress("0.0.0.0", port)); // Bind to IPv4 explicitly
 			System.out.println("Server running on port " + port);
 
 			while (true) {
 				Socket clientSocket = serverSocket.accept();
-				System.out.println("Client connected.");
+				System.out.println("Client connected: " + clientSocket.getInetAddress());
 
 				new Thread(() -> handleClient(clientSocket)).start();
 			}
 		} catch (IOException e) {
+			System.err.println("Error: Server could not start.");
 			e.printStackTrace();
 		}
 	}
@@ -51,13 +41,19 @@ public class SockServer {
 				ObjectOutputStream out = new ObjectOutputStream(clientSocket.getOutputStream())
 		) {
 			String playerName = null;
-
 			while (true) {
-				String requestStr = (String) in.readObject();
+				String requestStr;
+				try {
+					requestStr = (String) in.readObject();
+				} catch (EOFException e) {
+					System.out.println("Client disconnected.");
+					break;
+				}
+
 				JSONObject request = new JSONObject(requestStr);
 				JSONObject response = new JSONObject();
 
-				String type = request.getString("type");
+				String type = request.optString("type", "");
 
 				switch (type) {
 					case "hello":
@@ -66,7 +62,7 @@ public class SockServer {
 						break;
 
 					case "set_name":
-						playerName = request.getString("name");
+						playerName = request.optString("name", "Unknown");
 						activeGames.put(playerName, new GameSession(playerName));
 						response.put("type", "request_age");
 						response.put("message", "Hello " + playerName + "! Enter your age:");
@@ -88,7 +84,7 @@ public class SockServer {
 						break;
 
 					case "guess":
-						response = activeGames.get(playerName).processGuess(request.getString("guess"));
+						response = activeGames.get(playerName).processGuess(request.optString("guess", ""));
 						break;
 
 					case "skip":
@@ -102,6 +98,7 @@ public class SockServer {
 					case "quit":
 						response.put("type", "quit");
 						response.put("message", "Goodbye " + playerName + "!");
+						activeGames.remove(playerName);
 						break;
 
 					default:
@@ -112,25 +109,26 @@ public class SockServer {
 				out.writeObject(response.toString());
 				out.flush();
 			}
-		} catch (Exception e) {
-			e.printStackTrace();
+		} catch (IOException | ClassNotFoundException e) {
+			System.err.println("Error handling client: " + e.getMessage());
 		}
 	}
+
 	private static JSONObject getLeaderboard() {
 		JSONObject leaderboardJSON = new JSONObject();
-		for (String player : leaderboard.keySet()) {
-			leaderboardJSON.put(player, leaderboard.get(player));
+		for (Map.Entry<String, Integer> entry : leaderboard.entrySet()) {
+			leaderboardJSON.put(entry.getKey(), entry.getValue());
 		}
 		return leaderboardJSON;
 	}
 }
 
 class GameSession {
-	private String playerName;
+	private final String playerName;
 	private String currentMovie;
 	private int currentHintIndex;
 	private int score;
-	private MovieDatabase movieDatabase = new MovieDatabase();
+	private final MovieDatabase movieDatabase = new MovieDatabase();
 
 	public GameSession(String playerName) {
 		this.playerName = playerName;
@@ -185,7 +183,7 @@ class GameSession {
  * Stores movie names and hints.
  */
 class MovieDatabase {
-	private HashMap<String, String[]> movies = new HashMap<>();
+	private final HashMap<String, String[]> movies = new HashMap<>();
 
 	public MovieDatabase() {
 		movies.put("Titanic", new String[]{"A ship", "An iceberg", "A love story", "1997"});
