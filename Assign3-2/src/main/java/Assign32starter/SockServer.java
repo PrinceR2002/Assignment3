@@ -30,6 +30,7 @@ public class SockServer {
 		}
 
 		try (ServerSocket serverSocket = new ServerSocket(port)) {
+			serverSocket.setReuseAddress(true);
 			serverSocket.bind(new InetSocketAddress("0.0.0.0", port)); // Bind to IPv4 explicitly
 			System.out.println("Server running on port " + port);
 
